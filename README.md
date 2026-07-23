@@ -16,9 +16,6 @@ opencode ──▶ same request + PAYMENT-SIGNATURE
         ◀── 200 + PAYMENT-RESPONSE (settlement tx) + completion
 ```
 
-> [!IMPORTANT]
-> **100% gasless — you never need ETH.** Fund the wallet with **USDC only**. Every payment is an off-chain signature; the x402 facilitator submits the on-chain transfer and **pays the gas for you**. There is no "keep some ETH for fees" step, ever. (The only exception is entirely optional: the experimental `upto` upgrade needs ~$0.50 of ETH once, for a single approval transaction. Skip it and you'll never touch ETH.)
-
 ## Features
 
 - **Zero-setup, zero-gas payments** — generate a wallet, send it USDC on Base, chat. **No ETH, ever**: you only sign; the facilitator broadcasts and pays gas.
