@@ -18,7 +18,7 @@ opencode ──▶ same request + PAYMENT-SIGNATURE
 
 ## Features
 
-- **Zero-setup, zero-gas payments** — generate a wallet, send it USDC on Base, chat. **No ETH, ever**: you only sign; the facilitator broadcasts and pays gas.
+- **Zero-setup, zero-gas payments** — generate a wallet, send it USDC on Base, chat. **No ETH, ever**: you only sign; the facilitator broadcasts and pays gas. Sole exception: the optional `upto` upgrade needs one ~$0.50 approval tx.
 - **Seed-phrase custody** — 12/24-word BIP-39 wallet; on-disk backup encrypted with scrypt + AES-256-GCM under your passphrase. Secrets never enter chat context.
 - **Spending guardrails** — per-request and per-day USD caps enforced locally *before* anything is signed; append-only spend ledger with settlement tx hashes.
 - **`/wallet` command** — balance, funding, config, live seller order books, scheme upgrade.
