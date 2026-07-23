@@ -45,7 +45,7 @@ const paidFetch = createX402Fetch({
   account,
   budget: { maxPerRequestUsd: 0.05, maxPerDayUsd: 0.05 },
   ledger,
-  providerId: SI.providerId,
+  providerId: SI.id,
   dropAuthorization: true,
   log: (level, message) => console.log(`  [${level}] ${message}`),
 })
@@ -70,7 +70,7 @@ const cappedFetch = createX402Fetch({
   account,
   budget: { maxPerRequestUsd: 0.000001, maxPerDayUsd: 1 },
   ledger,
-  providerId: SI.providerId,
+  providerId: SI.id,
   dropAuthorization: true,
 })
 try {

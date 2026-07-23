@@ -61,20 +61,60 @@ opencode ──▶ same request + PAYMENT-SIGNATURE
 
 ## Configuration
 
-Via plugin-array options in `opencode.json` (`"plugin": [["opencode-x402", { ... }]]` — npm installs) or the options file `~/.config/opencode/x402.json` (any install; plugin-array wins on conflict):
+Via plugin-array options in `opencode.json` (`"plugin": [["opencode-x402", { ... }]]` — npm installs) or the options file `~/.config/opencode/x402.json` (any install; plugin-array wins on conflict).
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `maxPerRequestUsd` | `0.5` | Refuse to sign any single payment above this |
-| `maxPerDayUsd` | `10` | Refuse once today's authorized total would exceed this |
-| `minDiscount` | `90` | Only route to sellers ≥ N% below direct provider price (`0` disables) |
-| `providers` | — | Global seller allow-list, e.g. `["zai", "api.venice.ai"]` |
-| `modelProviders` | — | Per-model allow-lists, e.g. `{ "glm-5.2": ["zai"] }` |
-| `maxPricePer1M` | — | Skip sellers priced above this many USD per 1M tokens |
-| `preferUpto` | `true` | Use usage-based settlement once Permit2 approval exists |
-| `rpcUrl` | `https://mainnet.base.org` | Base RPC for balance/allowance reads and `upto` signing |
+**Wallet-level options are top-level** (they apply to every x402 provider — one wallet pays them all). **Marketplace options are scoped under the provider id**, because they are provider-specific features (minimum-discount routing, seller pinning, and price ceilings exist on Surplus Intelligence, not in the x402 protocol):
+
+```json
+{
+  "maxPerRequestUsd": 0.5,
+  "maxPerDayUsd": 10,
+  "rpcUrl": "https://mainnet.base.org",
+  "preferUpto": true,
+
+  "surplusintelligence": {
+    "minDiscount": 90,
+    "sellers": ["zai"],
+    "modelSellers": { "glm-5.2": ["zai"] },
+    "maxPricePer1M": 8
+  }
+}
+```
+
+| Scope | Option | Default | Meaning |
+| --- | --- | --- | --- |
+| wallet | `maxPerRequestUsd` | `0.5` | Refuse to sign any single payment above this |
+| wallet | `maxPerDayUsd` | `10` | Refuse once today's authorized total would exceed this |
+| wallet | `preferUpto` | `true` | Use usage-based settlement once Permit2 approval exists |
+| wallet | `rpcUrl` | `https://mainnet.base.org` | Base RPC for balance/allowance reads and `upto` signing |
+| marketplace | `minDiscount` | preset (SI: `90`) | Only route to sellers ≥ N% below direct provider price (`0` disables) |
+| marketplace | `sellers` | — | Global seller allow-list, e.g. `["zai", "api.venice.ai"]` |
+| marketplace | `modelSellers` | — | Per-model allow-lists, e.g. `{ "glm-5.2": ["zai"] }` |
+| marketplace | `maxPricePer1M` | — | Skip sellers priced above this many USD per 1M tokens |
 
 Budget caps apply to the *authorized maximum* per request — a conservative upper bound (`upto` settles less; `exact` settles exactly that).
+
+### Other x402 providers
+
+The payment core is provider-agnostic; Surplus Intelligence is just the bundled preset. To pay any other x402-speaking, OpenAI-compatible endpoint with the **same wallet**, export another plugin instance from your plugins file:
+
+```ts
+// ~/.config/opencode/plugins/x402.ts
+import { makeX402Plugin } from "opencode-x402"
+
+export { X402WalletPlugin } from "opencode-x402" // Surplus Intelligence preset
+
+export const AcmeX402 = makeX402Plugin({
+  id: "acme",
+  name: "Acme (x402)",
+  baseURL: "https://api.acme.ai/v1",
+  models: { "acme-large": { name: "Acme Large" } },
+  wireFormat: "legacy", // or "v2" for spec-pure servers
+  registerTools: false, // /wallet + tools are already registered by the SI instance
+})
+```
+
+Then `opencode auth login` → *Acme (x402)* → **Import seed phrase** (reuse the same wallet) or create a fresh one. Wallet caps and the spend ledger are shared across instances; marketplace-only features (min-discount, pinning, `/wallet market`) stay off unless the preset declares `marketplace`.
 
 ### Payment schemes
 
@@ -83,16 +123,16 @@ Budget caps apply to the *authorized maximum* per request — a conservative upp
 | `exact` (default) | Immediately, USDC-only wallet, fully gasless | Pre-charges the server's estimate — **scales with `max_tokens`**, so agent workloads with large output limits overpay |
 | `upto` (experimental — implemented and unit-tested, not yet exercised against production settlement) | After `/wallet approve-upto` (one tx, ~$0.50 Base ETH once) | Authorizes a max, settles **actual usage**; settlement gasless |
 
-### Minimum-discount routing
+### Minimum-discount routing (Surplus Intelligence)
 
-Surplus Intelligence supports a `/min{N}/v1` path segment: requests only route to sellers whose **estimated buyer discount** vs direct price is ≥ N%. The plugin bakes `minDiscount` into the provider baseURL (default `min90`). No qualifying seller → `minimum_discount_not_met` (observed live as HTTP 404; docs say 503 — the plugin matches the error code, not the status), surfaced as an actionable error including SI's "best otherwise-eligible discount". Two gotchas: the estimate includes the $0.003 x402 fee (tiny requests skew low), and seller pinning narrows the offer set *before* this filter.
+SI supports a `/min{N}/v1` path segment: requests only route to sellers whose **estimated buyer discount** vs direct price is ≥ N%. The plugin bakes `minDiscount` into the provider baseURL (SI preset default: `min90`). No qualifying seller → `minimum_discount_not_met` (observed live as HTTP 404; docs say 503 — the plugin matches the error code, not the status), surfaced as an actionable error including SI's "best otherwise-eligible discount". Two gotchas: the estimate includes the $0.003 x402 fee (tiny requests skew low), and seller pinning narrows the offer set *before* this filter. Order books move — a model that cleared 90% an hour ago may not now; failed routing is never charged.
 
-### Sub-provider (seller) routing
+### Seller routing (Surplus Intelligence)
 
 Every marketplace model is served by competing sellers (z.ai, Venice, jatevo, Bankr, OpenRouter resellers, …). Controls, in precedence order (explicit request `provider` beats all):
 
-- **`model@provider` suffix** — add a model id like `"glm-5.2@zai"` (or `"glm-5.2@zai,openrouter"`) under `provider.surplusintelligence.models`; the plugin strips the suffix and injects SI's `provider` body param. Accepted forms: provider id (`zai`), host (`api.z.ai`), or URL.
-- **`modelProviders`** then **`providers`** options (above).
+- **`model@seller` suffix** — add a model id like `"glm-5.2@zai"` (or `"glm-5.2@zai,openrouter"`) under `provider.surplusintelligence.models`; the plugin strips the suffix and injects SI's `provider` body param. Accepted forms: seller id (`zai`), host (`api.z.ai`), or URL.
+- **`modelSellers`** then **`sellers`** options (above).
 - **`maxPricePer1M`** injects SI's `max_price_per_1m` ceiling.
 
 Pinning failures return actionable errors (`unsupported_provider`, `no_sellers_for_model`) instead of bare 4xx. SI also supports BYOK priority providers (your own key tried first) — that requires a SIWE buyer account and is not wired into this plugin.

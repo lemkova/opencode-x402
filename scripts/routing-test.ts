@@ -46,7 +46,7 @@ check("non-json untouched", applyRouting(raw, { providers: ["zai"] }) === raw)
 
 // live: market order book renders (skipped in CI via SKIP_LIVE=1 — depends on SI uptime)
 if (process.env["SKIP_LIVE"] !== "1") {
-  const market = await formatMarket("glm-5.2")
+  const market = await formatMarket("https://api.surplusintelligence.ai", "glm-5.2")
   console.log("---\n" + market + "\n---")
   check("market live", market.includes("Order book") && market.includes("#1"))
 }

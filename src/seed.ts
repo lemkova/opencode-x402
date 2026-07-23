@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto"
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { generateMnemonic, validateMnemonic } from "@scure/bip39"
 import { wordlist } from "@scure/bip39/wordlists/english.js"
@@ -76,6 +76,8 @@ export function saveSeedEncrypted(mnemonic: string, passphrase: string): SeedFil
   }
   mkdirSync(dataDir(), { recursive: true })
   const path = seedFilePath()
+  // Never destroy a previous backup: a re-created wallet may still hold funds recoverable only via the old seed.
+  if (existsSync(path)) renameSync(path, `${path}.bak-${Date.now()}`)
   writeFileSync(path, JSON.stringify(file, null, 2), { mode: 0o600 })
   chmodSync(path, 0o600)
   return file

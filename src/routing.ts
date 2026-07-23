@@ -1,5 +1,3 @@
-import { SI } from "./si.ts"
-
 /**
  * SI sub-provider (seller) routing controls, applied by rewriting the request body
  * before the payment loop runs:
@@ -68,9 +66,9 @@ type MarketOffer = {
   reference_provider?: string
 }
 
-/** Render the live order book (sub-providers) for a model. Public endpoint, no auth. */
-export async function formatMarket(model: string): Promise<string> {
-  const response = await fetch(`${SI.apiOrigin}/api/markets/${encodeURIComponent(model)}`)
+/** Render the live order book (sellers) for a model. Public marketplace endpoint, no auth. */
+export async function formatMarket(apiOrigin: string, model: string): Promise<string> {
+  const response = await fetch(`${apiOrigin}/api/markets/${encodeURIComponent(model)}`)
   if (!response.ok) return `No market data for "${model}" (HTTP ${response.status}). Check the model id via GET /v1/models.`
   const data = (await response.json()) as { model?: string; offers?: MarketOffer[] }
   const offers = data.offers ?? []

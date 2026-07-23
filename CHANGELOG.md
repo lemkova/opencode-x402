@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+### Added
+
+- `makeX402Plugin(preset)` factory: wire any x402-speaking OpenAI-compatible endpoint to the shared wallet; Surplus Intelligence is now just the bundled preset (`X402WalletPlugin`)
+- Seed backups are never overwritten: re-creating a wallet renames the previous `seed.enc.json` to `seed.enc.json.bak-<timestamp>`
+
+### Changed
+
+- **Breaking (options):** marketplace options moved under the provider id (`{"surplusintelligence": {...}}`); seller allow-lists renamed `providers` → `sellers` and `modelProviders` → `modelSellers` to avoid confusion with x402 providers. Wallet-level options (`maxPerRequestUsd`, `maxPerDayUsd`, `rpcUrl`, `preferUpto`) stay top-level.
+- Marketplace features (min-discount routing, seller pinning, `/wallet market`, routing-error enrichment) activate only for presets that declare `marketplace`
+
 ## [0.1.0] - 2026-07-23
 
 ### Added
