@@ -1,10 +1,12 @@
 # opencode-x402
 
-An [opencode](https://opencode.ai) plugin that turns a locally generated crypto wallet into a payment method for LLM inference. No account, no API key, no subscription: fund the wallet with USDC on Base and every request pays for itself over the [x402 protocol](https://x402.org).
+[![CI](https://github.com/lemkova/opencode-x402/actions/workflows/ci.yml/badge.svg)](https://github.com/lemkova/opencode-x402/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Runtime: Bun](https://img.shields.io/badge/runtime-bun-f9f1e1)](https://bun.sh)
 
-Ships preconfigured for [Surplus Intelligence](https://www.surplusintelligence.ai), an open marketplace that routes each request to the cheapest seller for the model you asked for. The payment core is provider-agnostic (any x402 v2 resource server on an eip155 network).
+**Pay for LLM inference per request with USDC — no account, no API key, no subscription.**
 
-## How it works
+An [opencode](https://opencode.ai) plugin that turns a locally generated crypto wallet into a payment method over the [x402 protocol](https://x402.org) (HTTP 402 + signed stablecoin authorizations on Base). Ships preconfigured for [Surplus Intelligence](https://www.surplusintelligence.ai), an open marketplace where sellers compete to serve each model — requests route to the cheapest qualifying offer, often 90%+ below direct provider rates.
 
 ```
 opencode ──▶ POST /v1/chat/completions            (no auth)
@@ -14,123 +16,134 @@ opencode ──▶ same request + PAYMENT-SIGNATURE
         ◀── 200 + PAYMENT-RESPONSE (settlement tx) + completion
 ```
 
-Settlement gas is sponsored by the facilitator — the wallet only needs USDC.
+## Features
 
-## Setup
+- **Zero-setup payments** — generate a wallet, send it USDC on Base, chat. Gas is sponsored by the facilitator; the wallet needs USDC only.
+- **Seed-phrase custody** — 12/24-word BIP-39 wallet; on-disk backup encrypted with scrypt + AES-256-GCM under your passphrase. Secrets never enter chat context.
+- **Spending guardrails** — per-request and per-day USD caps enforced locally *before* anything is signed; append-only spend ledger with settlement tx hashes.
+- **`/wallet` command** — balance, funding, config, live seller order books, scheme upgrade.
+- **Marketplace controls** — minimum-discount routing (default: only sellers ≥90% below direct price), per-model seller pinning, price ceilings.
+- **Provider-agnostic core** — the payment loop works against any x402 v2 resource server on an eip155 network; Surplus Intelligence is the bundled preset.
 
-1. Add the plugin (npm) to `opencode.json`, or for a local checkout add a `file:` dependency in `~/.config/opencode/package.json` plus a re-export in `~/.config/opencode/plugins/x402.ts`:
+## Quickstart
+
+1. **Install** — add to `opencode.json`:
 
    ```json
    { "plugin": ["opencode-x402"] }
    ```
 
-2. Run `opencode auth login`, pick **Surplus Intelligence (x402)**, then **Create new wallet — generates a seed phrase**. Choose 12 or 24 words and a backup passphrase. Your seed phrase is displayed **once** in that dialog — write it down offline.
+   <details><summary>From a local checkout instead</summary>
 
-3. Send USDC on **Base** (chain 8453) to the shown address — a few dollars goes a long way.
+   Add a `file:` dependency in `~/.config/opencode/package.json` (`"opencode-x402": "file:/path/to/checkout"`) and create `~/.config/opencode/plugins/x402.ts`:
 
-4. Use `/wallet` in any session, or just pick a `surplusintelligence/*` model and chat.
+   ```ts
+   export { X402WalletPlugin } from "opencode-x402"
+   ```
 
-## `/wallet` command
+   </details>
 
-- `/wallet` — address, USDC/ETH balance, active scheme, today's spend vs caps, backup state. If no wallet exists yet it walks you through setup.
-- `/wallet fund` — funding instructions.
-- `/wallet config` — management menu (reveal/rotate seed, change passphrase, caps, upgrade scheme).
-- `/wallet approve-upto` — one-time on-chain Permit2 approval enabling usage-based settlement.
+2. **Create the wallet** — `opencode auth login` → **Surplus Intelligence (x402)** → **Create new wallet**. Pick 12/24 words and a backup passphrase. The seed phrase is shown **once, in that dialog only** — write it down offline.
 
-## Key custody
+3. **Fund it** — send USDC on **Base** (chain 8453) to the shown address. A few dollars goes a long way.
 
-| Artifact | Where | Protection |
+4. **Use it** — pick a `surplusintelligence/*` model and chat, or check in with `/wallet`.
+
+## The `/wallet` command
+
+| Invocation | Does |
+| --- | --- |
+| `/wallet` | Address, USDC/ETH balance, active scheme, routing threshold, today's spend vs caps, backup state, recent payments |
+| `/wallet fund` | Funding instructions |
+| `/wallet market <model>` | Live seller order book: host, $/1M in/out, % off direct |
+| `/wallet config` | Management menu (reveal/rotate seed, passphrase, caps, pinning) |
+| `/wallet approve-upto` | One-time on-chain Permit2 approval enabling usage-based settlement |
+
+## Configuration
+
+Via plugin-array options in `opencode.json` (`"plugin": [["opencode-x402", { ... }]]` — npm installs) or the options file `~/.config/opencode/x402.json` (any install; plugin-array wins on conflict):
+
+| Option | Default | Meaning |
 | --- | --- | --- |
-| Seed phrase (BIP-39, 12/24 words) | `~/.local/share/opencode/x402/seed.enc.json` | scrypt (N=2¹⁵) + AES-256-GCM under your passphrase, mode 0600 |
-| Hot signing key (derived `m/44'/60'/0'/0/0`) | opencode's auth store (`auth.json`) | plaintext, 0600 — this is the day-to-day spending key |
-| Address, spend ledger | `~/.local/share/opencode/x402/` | public data |
+| `maxPerRequestUsd` | `0.5` | Refuse to sign any single payment above this |
+| `maxPerDayUsd` | `10` | Refuse once today's authorized total would exceed this |
+| `minDiscount` | `90` | Only route to sellers ≥ N% below direct provider price (`0` disables) |
+| `providers` | — | Global seller allow-list, e.g. `["zai", "api.venice.ai"]` |
+| `modelProviders` | — | Per-model allow-lists, e.g. `{ "glm-5.2": ["zai"] }` |
+| `maxPricePer1M` | — | Skip sellers priced above this many USD per 1M tokens |
+| `preferUpto` | `true` | Use usage-based settlement once Permit2 approval exists |
+| `rpcUrl` | `https://mainnet.base.org` | Base RPC for balance/allowance reads and `upto` signing |
 
-The passphrase protects the **recovery backup**. The hot key must stay usable without prompts (payments sign automatically mid-request), so treat the whole thing as a hot wallet: small balances, budget caps on.
+Budget caps apply to the *authorized maximum* per request — a conservative upper bound (`upto` settles less; `exact` settles exactly that).
 
-**Secrets never pass through chat.** Chat context is sent to model providers (on a marketplace: arbitrary sellers) and persisted in transcripts, so the plugin's tools and the `/wallet` command refuse to handle seed phrases, private keys, or passphrases. Secrets flow only through:
-
-- the `opencode auth login` dialog (create / import seed / import raw key), and
-- the terminal CLI:
-
-  ```sh
-  bunx opencode-x402 reveal      # decrypt and show the seed phrase (asks passphrase)
-  bunx opencode-x402 passphrase  # change or set the backup passphrase
-  bunx opencode-x402 address     # print the wallet address
-  ```
-
-  (`bunx opencode-x402` works once the package is published to npm; for a local-checkout install use `~/.config/opencode/node_modules/.bin/opencode-x402`.)
-
-### Threat model
-
-What an attacker (including a prompt-injected agent inside your session) **can** do:
-
-- Burn budget by triggering paid requests — bounded by `maxPerRequestUsd` / `maxPerDayUsd`, enforced locally before anything is signed.
-- Trigger the one-time Permit2 approval tool (subject to opencode's tool-permission flow). The approval only authorizes the canonical Permit2 contract; it moves no funds by itself, and every payment still requires a fresh signature bounded by the server's 402 challenge.
-
-What they **cannot** do through the plugin:
-
-- Read the seed phrase or private key — tools and the `/wallet` command never load or return them; the mnemonic is AES-256-GCM encrypted at rest.
-- Redirect funds — the `payTo` address comes from the server's signed 402 challenge, and signatures authorize transfers only to that address for at most the challenged amount.
-
-Residual risk you accept: the derived hot key sits in opencode's auth store (file mode 0600, plaintext) so payments can sign without prompts. Anything that can read your files as your user can spend the wallet. Keep single-digit dollars on it.
-
-## Payment schemes
+### Payment schemes
 
 | Scheme | When | Cost behavior |
 | --- | --- | --- |
-| `exact` (default) | Works immediately with a USDC-only wallet — fully gasless | Pre-charges the server's estimate (scales with `max_tokens`) |
-| `upto` (experimental — implemented and unit-tested, not yet exercised against production settlement) | After a one-time Permit2 approval (`/wallet approve-upto`, needs ~$0.50 Base ETH once) | Authorizes a max, settles **actual usage**; per-request settlement is gasless |
+| `exact` (default) | Immediately, USDC-only wallet, fully gasless | Pre-charges the server's estimate — **scales with `max_tokens`**, so agent workloads with large output limits overpay |
+| `upto` (experimental — implemented and unit-tested, not yet exercised against production settlement) | After `/wallet approve-upto` (one tx, ~$0.50 Base ETH once) | Authorizes a max, settles **actual usage**; settlement gasless |
 
-## Options
+### Minimum-discount routing
 
-```json
-{
-  "plugin": [["opencode-x402", {
-    "maxPerRequestUsd": 0.5,
-    "maxPerDayUsd": 10,
-    "minDiscount": 90,
-    "rpcUrl": "https://mainnet.base.org",
-    "preferUpto": true
-  }]]
-}
-```
-
-Budget caps apply to the *authorized maximum* per request (a conservative upper bound — `upto` settles less). When a cap would be exceeded the request fails locally before anything is signed.
-
-### Minimum-discount routing (`minDiscount`, default 90)
-
-SI supports a `/min{N}/v1` path segment: requests only route to marketplace sellers whose **estimated buyer discount** vs direct provider price is ≥ N% (`0`–`100`; `0` disables the segment). The plugin bakes this into the provider `baseURL` — default `min90`. If no seller qualifies, SI rejects with `minimum_discount_not_met` (observed live as HTTP 404, docs say 503 — the plugin matches the code), which the plugin surfaces as a clear error including SI's "best otherwise-eligible discount". Two gotchas: the estimate includes the $0.003 x402 fee, so tiny requests skew low; and provider pinning narrows the offer set *before* this filter. An explicit `provider.surplusintelligence.options.baseURL` in your config takes precedence.
+Surplus Intelligence supports a `/min{N}/v1` path segment: requests only route to sellers whose **estimated buyer discount** vs direct price is ≥ N%. The plugin bakes `minDiscount` into the provider baseURL (default `min90`). No qualifying seller → `minimum_discount_not_met` (observed live as HTTP 404; docs say 503 — the plugin matches the error code, not the status), surfaced as an actionable error including SI's "best otherwise-eligible discount". Two gotchas: the estimate includes the $0.003 x402 fee (tiny requests skew low), and seller pinning narrows the offer set *before* this filter.
 
 ### Sub-provider (seller) routing
 
-Every SI model is served by competing sellers (z.ai, Venice, jatevo, Bankr, OpenRouter resellers, …). The router defaults to the cheapest healthy offer; the plugin exposes SI's buyer controls:
+Every marketplace model is served by competing sellers (z.ai, Venice, jatevo, Bankr, OpenRouter resellers, …). Controls, in precedence order (explicit request `provider` beats all):
 
-- **Inspect the order book**: `/wallet market <model>` — live offers with seller host, $/1M in/out, and % off direct.
-- **Pin per model id**: add a model like `"glm-5.2@zai"` (or `"glm-5.2@zai,openrouter"` for an allow-list) under `provider.surplusintelligence.models` — the plugin strips the suffix and injects SI's `provider` body param. Accepted forms: provider id (`zai`), host (`api.z.ai`), or URL.
-- **Pin via options**: `"providers": ["zai"]` (global allow-list) or `"modelProviders": { "glm-5.2": ["zai"] }` (per model).
-- **Price ceiling**: `"maxPricePer1M": 8.0` injects SI's `max_price_per_1m`, skipping sellers above that rate.
-- Precedence: explicit `provider` in the request body > `@suffix` > `modelProviders` > `providers`.
-- Pinning failures come back as actionable errors (`unsupported_provider`, `no_sellers_for_model`) instead of bare 4xx.
-- SI also supports **BYOK priority providers** (your own key tried first, marketplace as overflow) — that requires a SIWE buyer account and is not wired into this plugin yet.
+- **`model@provider` suffix** — add a model id like `"glm-5.2@zai"` (or `"glm-5.2@zai,openrouter"`) under `provider.surplusintelligence.models`; the plugin strips the suffix and injects SI's `provider` body param. Accepted forms: provider id (`zai`), host (`api.z.ai`), or URL.
+- **`modelProviders`** then **`providers`** options (above).
+- **`maxPricePer1M`** injects SI's `max_price_per_1m` ceiling.
 
-### Options file
+Pinning failures return actionable errors (`unsupported_provider`, `no_sellers_for_model`) instead of bare 4xx. SI also supports BYOK priority providers (your own key tried first) — that requires a SIWE buyer account and is not wired into this plugin.
 
-When the plugin is loaded from the plugins directory (the local-checkout install), opencode cannot pass plugin-array options, so the plugin also reads `~/.config/opencode/x402.json` (same keys as above; plugin-array options win when both exist).
+## Key custody & threat model
+
+| Artifact | Where | Protection |
+| --- | --- | --- |
+| Seed phrase (BIP-39) | `~/.local/share/opencode/x402/seed.enc.json` | scrypt (N=2¹⁵) + AES-256-GCM under your passphrase, mode 0600 |
+| Hot signing key (`m/44'/60'/0'/0/0`) | opencode's auth store | plaintext, 0600 — the day-to-day spending key |
+| Address, spend ledger | `~/.local/share/opencode/x402/` | public data |
+
+**Secrets never pass through chat.** Chat context is sent to model providers (on a marketplace: arbitrary sellers) and persisted in transcripts, so tools and `/wallet` refuse to handle seed phrases, keys, or passphrases. Secrets flow only through the `opencode auth login` dialog and the terminal CLI:
+
+```sh
+opencode-x402 reveal      # decrypt and show the seed phrase (asks passphrase)
+opencode-x402 passphrase  # change or set the backup passphrase
+opencode-x402 address     # print the wallet address
+```
+
+(Run via `bunx opencode-x402` for npm installs, or `~/.config/opencode/node_modules/.bin/opencode-x402` for local checkouts.)
+
+What an attacker — including a prompt-injected agent inside your session — **can** do: burn budget up to your caps; trigger the Permit2 approval (moves no funds; every payment still needs a fresh bounded signature). What they **cannot** do through the plugin: read the seed (encrypted, never loaded by tools) or redirect funds (`payTo` and amount are bound by the server's signed 402 challenge). Residual risk: the hot key is plaintext-0600 on disk so payments can sign without prompts — anything that reads your files as your user can spend the wallet. **Keep single-digit dollars on it.**
+
+## FAQ
+
+**Why `minimum_discount_not_met`?** No seller currently clears your `minDiscount` for that model — order books move. Lower it, unpin, or `/wallet market <model>` to look at the book. Failed routing is never charged.
+
+**Why did a 4-word reply cost $0.11?** The `exact` scheme pre-charges the estimate, which scales with `max_tokens` and the model's market rate. Upgrade to `upto` (`/wallet approve-upto`) to settle actual usage.
+
+**Why is there no tx hash on some ledger rows?** Streaming responses can't carry the `PAYMENT-RESPONSE` header (settlement completes after headers are sent). Non-streamed requests record it.
+
+**Model exists on SI but opencode rejects it?** opencode only offers models declared in config — add it under `provider.surplusintelligence.models`. SI lists ~350 via `GET /v1/models`; note that catalog ≠ routable (no active seller → 404, not charged).
 
 ## Provider notes (Surplus Intelligence)
 
-- Canonical host `https://api.surplusintelligence.ai/v1` (www. redirects drop payment headers).
-- SI adds a flat **$0.003 x402 facilitation fee per request** on top of the market inference price.
-- ~350 models via `GET /v1/models`; the plugin preconfigures a handful — add more under `provider.surplusintelligence.models`.
-- Wire format: SI's verifier expects the legacy x402 payload envelope (`{x402Version, scheme, network, payload}` with v1 network names). The payment core also implements the spec-pure v2 envelope (`wireFormat: "v2"` in `createX402Fetch`) for servers that verify it.
+- Canonical host `https://api.surplusintelligence.ai/v1` — `www.` redirects drop payment headers.
+- Flat **$0.003 x402 facilitation fee per request** on top of the market price (SIWE/API-key accounts don't pay it).
+- Wire format: SI verifies the legacy x402 envelope (`{x402Version, scheme, network, payload}`, v1 network names). The core also implements spec-pure v2 (`wireFormat: "v2"` in `createX402Fetch`) for servers that verify it.
 
 ## Development
 
 ```sh
 bun install
-bun run typecheck
-bun run test    # seed encryption round-trip, derivation, permissions
-bun run smoke   # live protocol test against SI with a throwaway unfunded wallet (spends nothing)
+bun run typecheck   # tsc --noEmit
+bun run test        # seed crypto + routing tests (SKIP_LIVE=1 to skip network checks)
+bun run smoke       # live protocol test vs SI with a throwaway unfunded wallet (spends nothing)
 ```
 
-The smoke test proves the full loop client-side: challenge decode → budget gate → exact signing → retry → server-side signature acceptance (terminating at the facilitator's balance check, since the throwaway wallet is empty).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the module map and ground rules, and [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
+
+## Disclaimer
+
+This is experimental software that signs cryptocurrency transactions from a hot wallet. Use at your own risk, keep only small balances on the wallet, and audit the code before trusting it with funds. MIT licensed — see [LICENSE](LICENSE).
