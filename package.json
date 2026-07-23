@@ -1,7 +1,7 @@
 {
   "name": "opencode-x402",
   "version": "0.1.0",
-  "description": "x402 wallet plugin for opencode — auto-pay for LLM inference per request with USDC on Base. Ships with a Surplus Intelligence provider preset.",
+  "description": "x402 wallet plugin for opencode — gasless per-request payments for LLM inference with USDC on Base (no ETH ever needed). Ships with a Surplus Intelligence provider preset.",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
@@ -20,7 +20,8 @@
     "x402",
     "usdc",
     "base",
-    "micropayments"
+    "micropayments",
+    "gasless"
   ],
   "license": "MIT",
   "author": "Lem (https://github.com/lemkova)",

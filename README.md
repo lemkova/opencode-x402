@@ -16,9 +16,12 @@ opencode ──▶ same request + PAYMENT-SIGNATURE
         ◀── 200 + PAYMENT-RESPONSE (settlement tx) + completion
 ```
 
+> [!IMPORTANT]
+> **100% gasless — you never need ETH.** Fund the wallet with **USDC only**. Every payment is an off-chain signature; the x402 facilitator submits the on-chain transfer and **pays the gas for you**. There is no "keep some ETH for fees" step, ever. (The only exception is entirely optional: the experimental `upto` upgrade needs ~$0.50 of ETH once, for a single approval transaction. Skip it and you'll never touch ETH.)
+
 ## Features
 
-- **Zero-setup payments** — generate a wallet, send it USDC on Base, chat. Gas is sponsored by the facilitator; the wallet needs USDC only.
+- **Zero-setup, zero-gas payments** — generate a wallet, send it USDC on Base, chat. **No ETH, ever**: you only sign; the facilitator broadcasts and pays gas.
 - **Seed-phrase custody** — 12/24-word BIP-39 wallet; on-disk backup encrypted with scrypt + AES-256-GCM under your passphrase. Secrets never enter chat context.
 - **Spending guardrails** — per-request and per-day USD caps enforced locally *before* anything is signed; append-only spend ledger with settlement tx hashes.
 - **`/wallet` command** — balance, funding, config, live seller order books, scheme upgrade.
@@ -45,7 +48,7 @@ opencode ──▶ same request + PAYMENT-SIGNATURE
 
 2. **Create the wallet** — `opencode auth login` → **Surplus Intelligence (x402)** → **Create new wallet**. Pick 12/24 words and a backup passphrase. The seed phrase is shown **once, in that dialog only** — write it down offline.
 
-3. **Fund it** — send USDC on **Base** (chain 8453) to the shown address. A few dollars goes a long way.
+3. **Fund it** — send USDC on **Base** (chain 8453) to the shown address. A few dollars goes a long way. **Do not send ETH — it isn't needed.** Payments are gasless: you sign, the facilitator pays the network fee.
 
 4. **Use it** — pick a `surplusintelligence/*` model and chat, or check in with `/wallet`.
 
@@ -159,6 +162,8 @@ opencode-x402 address     # print the wallet address
 What an attacker — including a prompt-injected agent inside your session — **can** do: burn budget up to your caps; trigger the Permit2 approval (moves no funds; every payment still needs a fresh bounded signature). What they **cannot** do through the plugin: read the seed (encrypted, never loaded by tools) or redirect funds (`payTo` and amount are bound by the server's signed 402 challenge). Residual risk: the hot key is plaintext-0600 on disk so payments can sign without prompts — anything that reads your files as your user can spend the wallet. **Keep single-digit dollars on it.**
 
 ## FAQ
+
+**Do I need ETH for gas?** **No — never for payments.** The wallet signs an authorization off-chain; the facilitator broadcasts the USDC transfer and pays the gas. A USDC-only wallet is fully functional from the first request. ETH becomes relevant only if you opt into the experimental `upto` scheme (one ~$0.50 approval transaction, once).
 
 **Why `minimum_discount_not_met`?** No seller currently clears your `minDiscount` for that model — order books move. Lower it, unpin, or `/wallet market <model>` to look at the book. Failed routing is never charged.
 

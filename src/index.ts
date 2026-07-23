@@ -135,7 +135,7 @@ export function makeX402Plugin(preset: X402ProviderPreset): Plugin {
       `  2. Pick "${preset.name}", then "Create new wallet - generates a seed phrase"`,
       "  3. Choose 12 or 24 words and set a passphrase (encrypts the on-disk backup)",
       "  4. Your seed phrase is shown ONCE in that dialog - write it down offline",
-      "  5. Send USDC on Base (chain 8453) to the shown address",
+      "  5. Send USDC on Base (chain 8453) to the shown address - USDC ONLY, no ETH needed (payments are gasless)",
       "",
       "Then run /wallet again to see the address and balance.",
       "Security: seed phrases and passphrases are never handled in chat - only in the auth dialog or the `opencode-x402` CLI.",
@@ -186,7 +186,7 @@ export function makeX402Plugin(preset: X402ProviderPreset): Plugin {
           ? `On-chain lookups unavailable (RPC ${rpcUrl}): ${rpcError.slice(0, 160)}`
           : [
               `USDC: ${formatUnits(usdc!, 6)}`,
-              `ETH (gas; only needed once for the optional upto approval): ${formatEther(eth!)}`,
+              `ETH: ${formatEther(eth!)} (NOT required - payments are gasless; only the optional upto approval ever uses ETH)`,
               `Scheme: ${allowance! > 0n ? "upto ready - settles actual usage" : "exact (pre-charges estimate) - upgrade via /wallet approve-upto"}`,
             ].join("\n"),
         marketplace
@@ -325,6 +325,7 @@ export function makeX402Plugin(preset: X402ProviderPreset): Plugin {
                   `Write down your ${words}-word seed phrase NOW - it is shown only this once:\n\n` +
                   `  ${mnemonic}\n\n` +
                   `Address (fund with USDC on Base, chain 8453): ${hot.address}\n` +
+                  `USDC only - no ETH needed: payments are gasless (the facilitator pays network fees).\n` +
                   `Encrypted backup: ${seedFilePath()} (${file.protected ? "passphrase-protected" : "NOT passphrase-protected"})\n` +
                   `Recover the phrase later with: opencode-x402 reveal\n` +
                   `This is a hot wallet - keep only small amounts on it.`,
@@ -415,9 +416,10 @@ export function makeX402Plugin(preset: X402ProviderPreset): Plugin {
                   if (action === "fund")
                     return [
                       `Send USDC on Base (chain 8453) to: ${address}`,
+                      `USDC ONLY - no ETH needed. Payments are gasless: you sign, the x402 facilitator pays the network fee.`,
                       `Explorer: https://basescan.org/address/${address}`,
                       `USDC contract: ${BASE_USDC}. Inference costs fractions of a cent plus a small x402 fee per request.`,
-                      `Optional: ~$0.50 of Base ETH enables the usage-based 'upto' scheme (one-time approval).`,
+                      `Entirely optional: ~$0.50 of Base ETH enables the experimental usage-based 'upto' scheme (one-time approval tx). Skip it and you never need ETH.`,
                       `Hot wallet - keep only what you are willing to spend.`,
                     ].join("\n")
 
