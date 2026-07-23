@@ -63,7 +63,9 @@ opencode ──▶ same request + PAYMENT-SIGNATURE
 
 Via plugin-array options in `opencode.json` (`"plugin": [["opencode-x402", { ... }]]` — npm installs) or the options file `~/.config/opencode/x402.json` (any install; plugin-array wins on conflict).
 
-**Wallet-level options are top-level** (they apply to every x402 provider — one wallet pays them all). **Marketplace options are scoped under the provider id**, because they are provider-specific features (minimum-discount routing, seller pinning, and price ceilings exist on Surplus Intelligence, not in the x402 protocol):
+**Wallet-level options are top-level** (they apply to every x402 provider — one wallet pays them all). **Marketplace options are scoped under the provider id**, because they are provider-specific features (minimum-discount routing, seller pinning, and price ceilings exist on Surplus Intelligence, not in the x402 protocol).
+
+**Zero config is a complete config.** The defaults below are what you get out of the box — the router accepts **any seller** that clears the minimum discount; nothing is pinned:
 
 ```json
 {
@@ -73,10 +75,7 @@ Via plugin-array options in `opencode.json` (`"plugin": [["opencode-x402", { ...
   "preferUpto": true,
 
   "surplusintelligence": {
-    "minDiscount": 90,
-    "sellers": ["zai"],
-    "modelSellers": { "glm-5.2": ["zai"] },
-    "maxPricePer1M": 8
+    "minDiscount": 90
   }
 }
 ```
@@ -88,9 +87,11 @@ Via plugin-array options in `opencode.json` (`"plugin": [["opencode-x402", { ...
 | wallet | `preferUpto` | `true` | Use usage-based settlement once Permit2 approval exists |
 | wallet | `rpcUrl` | `https://mainnet.base.org` | Base RPC for balance/allowance reads and `upto` signing |
 | marketplace | `minDiscount` | preset (SI: `90`) | Only route to sellers ≥ N% below direct provider price (`0` disables) |
-| marketplace | `sellers` | — | Global seller allow-list, e.g. `["zai", "api.venice.ai"]` |
-| marketplace | `modelSellers` | — | Per-model allow-lists, e.g. `{ "glm-5.2": ["zai"] }` |
-| marketplace | `maxPricePer1M` | — | Skip sellers priced above this many USD per 1M tokens |
+| marketplace | `sellers` | **unset — all sellers accepted** | *Opt-in restriction:* allow-list, e.g. `["zai", "api.venice.ai"]`. Setting it **rejects every seller not listed**, even cheaper ones |
+| marketplace | `modelSellers` | **unset — all sellers accepted** | *Opt-in restriction:* per-model allow-lists, e.g. `{ "glm-5.2": ["zai"] }` |
+| marketplace | `maxPricePer1M` | **unset — no ceiling** | *Opt-in restriction:* skip sellers priced above this many USD per 1M tokens |
+
+Restriction options narrow routing *before* the discount filter — a narrow pin can make `minDiscount` unsatisfiable even when other sellers qualify. Leave them unset unless you specifically need to exclude sellers.
 
 Budget caps apply to the *authorized maximum* per request — a conservative upper bound (`upto` settles less; `exact` settles exactly that).
 

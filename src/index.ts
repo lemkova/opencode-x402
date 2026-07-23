@@ -432,9 +432,13 @@ export function makeX402Plugin(preset: X402ProviderPreset): Plugin {
                       `- Upgrade to usage-based settlement: /wallet approve-upto`,
                       `- Options file: ${optionsFilePath()} - wallet-level { "maxPerRequestUsd": ${budget.maxPerRequestUsd}, "maxPerDayUsd": ${budget.maxPerDayUsd} }` +
                         (marketplace
-                          ? `; marketplace (under "${preset.id}") { "minDiscount": ${minDiscount}, "sellers": [...], "modelSellers": { "<model>": [...] }, "maxPricePer1M": <usd> }`
+                          ? `; marketplace (under "${preset.id}") { "minDiscount": ${minDiscount} } plus opt-in restrictions "sellers"/"modelSellers"/"maxPricePer1M" (unset = any seller that clears minDiscount)`
                           : ""),
-                      ...(marketplace ? [`- Pin sellers per request: model id suffix "<model>@<seller>" (see /wallet market <model>)`] : []),
+                      ...(marketplace
+                        ? [
+                            `- Seller routing: UNPINNED by default - any seller >=${minDiscount}% discount is accepted. Pin per request via model id suffix "<model>@<seller>" (see /wallet market <model>)`,
+                          ]
+                        : []),
                       `- Ledger: ${dataDir()}/ledger.jsonl`,
                       `- Backup state: ${seed ? (seed.protected ? "passphrase-protected" : "UNPROTECTED (empty passphrase)") : "no seed backup (raw key import)"}`,
                     ].join("\n")
