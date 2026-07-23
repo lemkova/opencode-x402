@@ -68,10 +68,15 @@ type MarketOffer = {
 
 /** Render the live order book (sellers) for a model. Public marketplace endpoint, no auth. */
 export async function formatMarket(apiOrigin: string, model: string): Promise<string> {
-  const response = await fetch(`${apiOrigin}/api/markets/${encodeURIComponent(model)}`)
-  if (!response.ok) return `No market data for "${model}" (HTTP ${response.status}). Check the model id via GET /v1/models.`
-  const data = (await response.json()) as { model?: string; offers?: MarketOffer[] }
-  const offers = data.offers ?? []
+  let data: { model?: string; offers?: MarketOffer[] }
+  try {
+    const response = await fetch(`${apiOrigin}/api/markets/${encodeURIComponent(model)}`)
+    if (!response.ok) return `No market data for "${model}" (HTTP ${response.status}). Check the model id via GET /v1/models.`
+    data = (await response.json()) as { model?: string; offers?: MarketOffer[] }
+  } catch (error) {
+    return `Market data unavailable (${error instanceof Error ? error.message : String(error)}). Try again shortly.`
+  }
+  const offers = Array.isArray(data.offers) ? data.offers : []
   if (offers.length === 0) return `No active seller offers for "${model}" right now.`
 
   const usd = (micro: number | null | undefined) => (micro == null ? "?" : `$${(micro / 1e6).toFixed(4)}`)

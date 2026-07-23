@@ -178,7 +178,7 @@ What an attacker — including a prompt-injected agent inside your session — *
 ```sh
 bun install
 bun run typecheck   # tsc --noEmit
-bun run test        # seed crypto + routing tests (SKIP_LIVE=1 to skip network checks)
+bun run test        # seed crypto + routing + payment-loop edge tests vs a mock x402 server (SKIP_LIVE=1 skips network checks)
 bun run smoke       # live protocol test vs SI with a throwaway unfunded wallet (spends nothing)
 ```
 

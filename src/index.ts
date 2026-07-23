@@ -35,6 +35,9 @@ function loadFileOptions(): Record<string, unknown> {
   }
 }
 
+/** Process-wide: the first plugin instance registers the shared /wallet UI (tools + command). */
+let walletUiClaimed = false
+
 function toList(value: unknown): string[] | undefined {
   if (typeof value === "string" && value.trim().length > 0) return [value.trim()]
   if (Array.isArray(value)) {
@@ -120,7 +123,10 @@ export function makeX402Plugin(preset: X402ProviderPreset): Plugin {
     const budget: Budget = { maxPerRequestUsd, maxPerDayUsd }
     const ledger = new Ledger(dataDir())
     const publicClient = createPublicClient({ chain: base, transport: http(rpcUrl) })
-    const registerTools = preset.registerTools ?? true
+    // First instance claims the shared /wallet UI; later instances skip so tool
+    // names never collide even when a custom preset forgets registerTools: false.
+    const registerTools = (preset.registerTools ?? true) && !walletUiClaimed
+    if (registerTools) walletUiClaimed = true
 
     const setupGuide = [
       "No x402 wallet configured yet. To create one (takes ~1 minute):",
@@ -147,16 +153,24 @@ export function makeX402Plugin(preset: X402ProviderPreset): Plugin {
       const seed = loadSeedFile()
       const address = account?.address ?? rememberedAddress() ?? seed?.address
       if (!address) return setupGuide
-      const [usdc, eth, allowance] = await Promise.all([
-        publicClient.readContract({ address: BASE_USDC, abi: erc20Abi, functionName: "balanceOf", args: [address] }),
-        publicClient.getBalance({ address }),
-        publicClient.readContract({
-          address: BASE_USDC,
-          abi: erc20Abi,
-          functionName: "allowance",
-          args: [address, PERMIT2_ADDRESS],
-        }),
-      ])
+      let usdc: bigint | undefined
+      let eth: bigint | undefined
+      let allowance: bigint | undefined
+      let rpcError: string | undefined
+      try {
+        ;[usdc, eth, allowance] = await Promise.all([
+          publicClient.readContract({ address: BASE_USDC, abi: erc20Abi, functionName: "balanceOf", args: [address] }),
+          publicClient.getBalance({ address }),
+          publicClient.readContract({
+            address: BASE_USDC,
+            abi: erc20Abi,
+            functionName: "allowance",
+            args: [address, PERMIT2_ADDRESS],
+          }),
+        ])
+      } catch (error) {
+        rpcError = error instanceof Error ? error.message : String(error)
+      }
       const recent = ledger
         .tail(5)
         .map((e) => `  ${e.ts}  ${e.model ?? "?"}  ${e.scheme}  <= $${e.maxUsd.toFixed(6)}${e.txHash ? `  tx=${e.txHash}` : ""}`)
@@ -168,9 +182,13 @@ export function makeX402Plugin(preset: X402ProviderPreset): Plugin {
         : "none (wallet was imported as a raw private key - no seed backup exists)"
       return [
         `Address: ${address}  (Base mainnet)`,
-        `USDC: ${formatUnits(usdc, 6)}`,
-        `ETH (gas; only needed once for the optional upto approval): ${formatEther(eth)}`,
-        `Scheme: ${allowance > 0n ? "upto ready - settles actual usage" : "exact (pre-charges estimate) - upgrade via /wallet approve-upto"}`,
+        rpcError
+          ? `On-chain lookups unavailable (RPC ${rpcUrl}): ${rpcError.slice(0, 160)}`
+          : [
+              `USDC: ${formatUnits(usdc!, 6)}`,
+              `ETH (gas; only needed once for the optional upto approval): ${formatEther(eth!)}`,
+              `Scheme: ${allowance! > 0n ? "upto ready - settles actual usage" : "exact (pre-charges estimate) - upgrade via /wallet approve-upto"}`,
+            ].join("\n"),
         marketplace
           ? `Routing (${preset.id}): min${minDiscount} (only sellers priced >=${minDiscount}% below direct provider rates; 0 disables)`
           : `Provider: ${preset.name} (plain x402 - no marketplace routing)`,
@@ -217,7 +235,12 @@ export function makeX402Plugin(preset: X402ProviderPreset): Plugin {
           const auth = await getAuth()
           const privateKey = auth && "key" in auth ? normalizePrivateKey(auth.key) : undefined
           if (!privateKey) return {}
-          account = privateKeyToAccount(privateKey)
+          try {
+            account = privateKeyToAccount(privateKey)
+          } catch (error) {
+            log("error", `stored private key is invalid (not on curve): ${String(error)}`)
+            return {}
+          }
           rememberAddress(account.address)
           const payFetch = createX402Fetch({
             account,
@@ -350,7 +373,12 @@ export function makeX402Plugin(preset: X402ProviderPreset): Plugin {
             authorize: async (inputs) => {
               const privateKey = normalizePrivateKey(inputs?.["privateKey"])
               if (!privateKey) return { type: "failed" as const }
-              rememberAddress(privateKeyToAccount(privateKey).address)
+              try {
+                rememberAddress(privateKeyToAccount(privateKey).address)
+              } catch {
+                // hex-valid but not a usable secp256k1 key (e.g. zero, >= curve order)
+                return { type: "failed" as const }
+              }
               return { type: "success" as const, key: privateKey }
             },
           },
@@ -415,7 +443,16 @@ export function makeX402Plugin(preset: X402ProviderPreset): Plugin {
                   // approve-upto
                   if (!account)
                     return `Wallet key not loaded in this session yet. Send one message using a ${preset.id} model first (or re-run \`opencode auth login\`), then retry.`
-                  const eth = await publicClient.getBalance({ address: account.address })
+                  const [eth, current] = await Promise.all([
+                    publicClient.getBalance({ address: account.address }),
+                    publicClient.readContract({
+                      address: BASE_USDC,
+                      abi: erc20Abi,
+                      functionName: "allowance",
+                      args: [account.address, PERMIT2_ADDRESS],
+                    }),
+                  ])
+                  if (current > 0n) return "Permit2 allowance is already set - 'upto' is active. Nothing to do."
                   if (eth === 0n) return `No Base ETH for gas on ${account.address}. Send ~$0.50 of ETH on Base, then retry.`
                   const tx = createPermit2ApprovalTx(BASE_USDC)
                   const walletClient = createWalletClient({ account, chain: base, transport: http(rpcUrl) })

@@ -52,45 +52,51 @@ function promptHidden(label: string): Promise<string> {
 const command = process.argv[2] ?? "help"
 const file = loadSeedFile()
 
-switch (command) {
-  case "reveal": {
-    if (!file) {
-      console.error(`No seed backup at ${seedFilePath()}. Create a wallet first (opencode auth login).`)
-      process.exit(1)
+try {
+  switch (command) {
+    case "reveal": {
+      if (!file) {
+        console.error(`No seed backup at ${seedFilePath()}. Create a wallet first (opencode auth login).`)
+        process.exit(1)
+      }
+      const passphrase = file.protected ? await promptHidden("Backup passphrase: ") : ""
+      const mnemonic = decryptSeed(file, passphrase)
+      console.log(`\nSeed phrase (${file.words} words, address ${file.address}):\n`)
+      console.log(`  ${mnemonic}\n`)
+      console.log("Write it down offline, then clear this terminal (e.g. `clear && history -c`).")
+      break
     }
-    const passphrase = file.protected ? await promptHidden("Backup passphrase: ") : ""
-    const mnemonic = decryptSeed(file, passphrase)
-    console.log(`\nSeed phrase (${file.words} words, address ${file.address}):\n`)
-    console.log(`  ${mnemonic}\n`)
-    console.log("Write it down offline, then clear this terminal (e.g. `clear && history -c`).")
-    break
+    case "passphrase": {
+      if (!file) {
+        console.error(`No seed backup at ${seedFilePath()}. Create a wallet first (opencode auth login).`)
+        process.exit(1)
+      }
+      const oldPass = file.protected ? await promptHidden("Current passphrase: ") : ""
+      const mnemonic = decryptSeed(file, oldPass)
+      const next = await promptHidden("New passphrase (empty = unprotected): ")
+      const confirm = await promptHidden("Repeat new passphrase: ")
+      if (next !== confirm) {
+        console.error("Passphrases do not match; nothing changed.")
+        process.exit(1)
+      }
+      saveSeedEncrypted(mnemonic, next)
+      console.log(next.length > 0 ? "Backup re-encrypted with the new passphrase." : "Warning: backup is now unprotected (empty passphrase).")
+      break
+    }
+    case "address": {
+      if (!file) {
+        console.error("No seed backup found.")
+        process.exit(1)
+      }
+      console.log(file.address)
+      break
+    }
+    default:
+      console.log("Usage: opencode-x402 <reveal|passphrase|address>")
+      process.exit(command === "help" ? 0 : 1)
   }
-  case "passphrase": {
-    if (!file) {
-      console.error(`No seed backup at ${seedFilePath()}. Create a wallet first (opencode auth login).`)
-      process.exit(1)
-    }
-    const oldPass = file.protected ? await promptHidden("Current passphrase: ") : ""
-    const mnemonic = decryptSeed(file, oldPass)
-    const next = await promptHidden("New passphrase (empty = unprotected): ")
-    const confirm = await promptHidden("Repeat new passphrase: ")
-    if (next !== confirm) {
-      console.error("Passphrases do not match; nothing changed.")
-      process.exit(1)
-    }
-    saveSeedEncrypted(mnemonic, next)
-    console.log(next.length > 0 ? "Backup re-encrypted with the new passphrase." : "Warning: backup is now unprotected (empty passphrase).")
-    break
-  }
-  case "address": {
-    if (!file) {
-      console.error("No seed backup found.")
-      process.exit(1)
-    }
-    console.log(file.address)
-    break
-  }
-  default:
-    console.log("Usage: opencode-x402 <reveal|passphrase|address>")
-    process.exit(command === "help" ? 0 : 1)
+} catch (error) {
+  // Clean single-line errors (wrong passphrase, non-TTY stdin) - never a stack trace.
+  console.error(error instanceof Error ? error.message : String(error))
+  process.exit(1)
 }

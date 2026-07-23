@@ -1,5 +1,5 @@
 /** Dev check: seed encrypt/decrypt round-trip in an isolated XDG_DATA_HOME. */
-import { mkdtempSync, statSync } from "node:fs"
+import { mkdtempSync, readdirSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -47,5 +47,10 @@ check("file perms 0600", (mode & 0o777) === 0o600, `mode=${(mode & 0o777).toStri
 saveSeedEncrypted(m24, "")
 const unprot = loadSeedFile()
 check("empty passphrase flagged", unprot !== undefined && !unprot.protected && decryptSeed(unprot, "") === m24)
+
+// Overwrite protection: the previous backup must survive as .bak-<ts>.
+const dir = join(process.env["XDG_DATA_HOME"]!, "opencode", "x402")
+const baks = readdirSync(dir).filter((f) => f.startsWith("seed.enc.json.bak-"))
+check("previous backup preserved", baks.length === 1, baks.join(","))
 
 process.exit(failures === 0 ? 0 : 1)

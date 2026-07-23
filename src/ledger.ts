@@ -30,7 +30,9 @@ export class Ledger {
   }
 
   append(entry: LedgerEntry): void {
-    appendFileSync(this.file, JSON.stringify(entry) + "\n")
+    // A non-finite maxUsd would poison todayTotalUsd (NaN comparisons disable the daily cap).
+    const safe = Number.isFinite(entry.maxUsd) ? entry : { ...entry, maxUsd: 0 }
+    appendFileSync(this.file, JSON.stringify(safe) + "\n")
   }
 
   private entries(): LedgerEntry[] {
@@ -50,7 +52,9 @@ export class Ledger {
   todayTotalUsd(): number {
     const today = new Date().toISOString().slice(0, 10)
     let total = 0
-    for (const e of this.entries()) if (e.ts.startsWith(today)) total += e.maxUsd
+    for (const e of this.entries()) {
+      if (typeof e.ts === "string" && e.ts.startsWith(today) && Number.isFinite(e.maxUsd)) total += e.maxUsd
+    }
     return total
   }
 

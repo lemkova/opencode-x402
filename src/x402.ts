@@ -93,6 +93,8 @@ export function createX402Fetch(options: X402FetchOptions): FetchLike {
     const send = (extraHeaders?: Record<string, string>) => {
       const headers = new Headers(request.headers)
       if (options.dropAuthorization) headers.delete("authorization")
+      // The body may have been rewritten upstream (seller routing); a stale length poisons the request.
+      headers.delete("content-length")
       if (extraHeaders) for (const [k, v] of Object.entries(extraHeaders)) headers.set(k, v)
       return fetch(request.url, {
         method: request.method,
@@ -126,7 +128,16 @@ export function createX402Fetch(options: X402FetchOptions): FetchLike {
       )
     }
 
-    const amountUsd = Number(accept.amount) / 1e6
+    // Strict amount validation: Number("garbage") is NaN and NaN comparisons are
+    // always false, which would silently bypass BOTH budget caps. Never sign
+    // anything whose amount is not a plain base-10 integer (stablecoin micro-units).
+    const amountRaw = String(accept.amount)
+    if (!/^\d{1,30}$/.test(amountRaw)) {
+      throw new Error(
+        `x402: refusing to pay - malformed amount ${JSON.stringify(accept.amount)} in payment requirements from ${new URL(request.url).host}.`,
+      )
+    }
+    const amountUsd = Number(amountRaw) / 1e6
     checkBudget(options.budget, options.ledger, amountUsd)
 
     const scheme = accept.scheme === "upto" ? new UptoEvmScheme(signer) : new ExactEvmScheme(signer)

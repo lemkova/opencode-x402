@@ -34,7 +34,7 @@
   "homepage": "https://github.com/lemkova/opencode-x402#readme",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun run scripts/seed-test.ts && bun run scripts/routing-test.ts",
+    "test": "bun run scripts/seed-test.ts && bun run scripts/routing-test.ts && bun run scripts/edge-test.ts",
     "smoke": "bun run scripts/smoke.ts"
   },
   "dependencies": {
