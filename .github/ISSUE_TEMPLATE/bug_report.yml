@@ -1,0 +1,48 @@
+name: Bug report
+description: Something broke (non-security). For vulnerabilities use private reporting instead.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security issues:** do NOT file them here — use [private vulnerability reporting](https://github.com/lemkova/opencode-x402/security/advisories/new).
+        **Never paste seed phrases, private keys, passphrases, or full auth.json contents.**
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the exact error message. Redact wallet addresses if you prefer.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. opencode run -m surplusintelligence/...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: "opencode 1.18.4, opencode-x402 0.1.0, bun 1.3.x, OS"
+    validations:
+      required: true
+  - type: dropdown
+    id: scheme
+    attributes:
+      label: Payment scheme in use
+      options:
+        - exact (default)
+        - upto (Permit2 approved)
+        - not payment-related
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: "`grep x402 ~/.local/share/opencode/log/opencode.log | tail` — check for secrets before pasting."
+      render: text
